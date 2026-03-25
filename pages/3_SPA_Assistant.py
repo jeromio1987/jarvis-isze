@@ -11,7 +11,7 @@ from utils.api_clients import ask_claude
 
 st.set_page_config(page_title="SPA Assistant v2", layout="wide")
 st.title("SPA Assistant v2")
-st.caption("Special Price Agreement evaluator — ROI, margin floor, and approval routing for ISZE")
+st.caption("Special Price Agreement evaluator â€” ROI, margin floor, and approval routing for ISZE")
 
 with st.sidebar:
     st.header("Settings")
@@ -59,12 +59,12 @@ def breakeven_volume(current_gp_eur, current_vol, new_gp_eur):
     return (current_gp_eur * current_vol) / new_gp_eur
 
 def detect_header_row(df_raw):
-    """Find the row index that looks like the real header — must have multi-word column names."""
+    """Find the row index that looks like the real header â€” must have multi-word column names."""
     for i, row in df_raw.iterrows():
         vals = [str(v).strip() for v in row.values if str(v).strip() not in ("nan", "", "None")]
         if len(vals) < 3:
             continue
-        # Require at least one value longer than 3 chars (not just single letters like C/D/F)
+        # Require at least one multi-character value (not just single letters)
         has_multichar = any(len(v) > 3 for v in vals)
         # Require "part" or "b/p" somewhere in the row
         row_text = " ".join(vals).lower()
@@ -119,9 +119,10 @@ def parse_pricer_file(uploaded_file):
         pn_val = str(row.get(col_map.get("pn", ""), "")).strip()
         if not pn_val or pn_val.lower() in ("nan", "", "none"):
             continue
-        # Skip single-letter rows (class legend) and note/source rows
+        # Skip rows that are just single letters (class legend rows)
         if len(pn_val) <= 2 and pn_val.isalpha():
             continue
+        # Skip rows that look like notes or source lines
         if pn_val.lower().startswith("note") or pn_val.lower().startswith("source"):
             continue
         bp_raw = str(row.get(col_map.get("bp", ""), "0")).strip()
@@ -144,7 +145,7 @@ with col_left:
     distributor = st.text_input("Distributor", placeholder="e.g. ITUK, Universal Motors Israel")
     justification = st.text_area("Distributor Justification", placeholder="Reason for requesting special price", height=80)
 
-    # ── File upload ────────────────────────────────────────────────────────────
+    # â”€â”€ File upload â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     with st.expander("Upload from Pricer File", expanded=False):
         template_csv = "Part No.,Part Name,B/P,Class,Source,PR00_EUR,Requested_EUR,Volume_yr\n8982705240,Oil filter,1200,C,J (Japan),6.80,5.80,500\n"
         st.download_button("Download template CSV", template_csv, "spa_template.csv", "text/csv")
@@ -213,7 +214,7 @@ with col_left:
     pn_data = []
     for i, _ in enumerate(st.session_state.spa_rows):
         pf = st.session_state.prefill.get(i, {})
-        with st.expander(f"Part #{i+1}" + (f" — {pf.get('pn', '')}" if pf.get("pn") else ""), expanded=True):
+        with st.expander(f"Part #{i+1}" + (f" â€” {pf.get('pn', '')}" if pf.get("pn") else ""), expanded=True):
             c1, c2 = st.columns(2)
             pn = c1.text_input("Part Number", key=f"pn_{i}", value=pf.get("pn", ""), placeholder="e.g. 8982705240")
             desc = c2.text_input("Description", key=f"desc_{i}", value=pf.get("desc", ""), placeholder="e.g. Oil filter")
@@ -293,7 +294,7 @@ with col_right:
         fmt["Discount %"] = "{:.1f}%"
         fmt["GP% Curr"] = "{:.1f}%"
         fmt["GP% Req"] = "{:.1f}%"
-        st.dataframe(df[display_cols].style.applymap(color_status, subset=["Status"]).format(fmt, na_rep="—"), use_container_width=True)
+        st.dataframe(df[display_cols].style.applymap(color_status, subset=["Status"]).format(fmt, na_rep="â€”"), use_container_width=True)
 
         st.subheader("Portfolio Summary")
         total_curr = df["Ann GP Curr"].sum()
@@ -325,10 +326,10 @@ with col_right:
 
         weak_vol = df[df["Break-even Vol"] > df["Stated Vol"] * 1.5]
         if not weak_vol.empty:
-            st.warning(f"Weak volume justification for: {', '.join(weak_vol['PN'].tolist())} — break-even exceeds stated volume by >50%")
+            st.warning(f"Weak volume justification for: {', '.join(weak_vol['PN'].tolist())} â€” break-even exceeds stated volume by >50%")
 
         if len(df) > 0:
-            st.subheader("Sensitivity Table — Top GP Impact PN")
+            st.subheader("Sensitivity Table â€” Top GP Impact PN")
             top_pn = df.loc[df["Ann GP Impact"].abs().idxmax()]
             cost_top = top_pn["FOB Cost"]
             pr00_top = top_pn["PR00"]
@@ -356,7 +357,7 @@ with col_right:
         comp_flag = any((row["Comp Price"] > 0 and row["Requested"] > row["Comp Price"]) for _, row in df.iterrows())
 
         if below_cost_flag:
-            rec = "REJECT — Below Cost"
+            rec = "REJECT â€” Below Cost"
             rec_color = "error"
             rec_detail = "One or more PNs requested at or below FOB cost. Cannot approve."
         elif iml_flag:
@@ -364,11 +365,11 @@ with col_right:
             rec_color = "error"
             rec_detail = "IML contact flagged in request (Masumi/Yoshimoto). Forward to IML International Parts Sales Dept."
         elif below_floor_flag:
-            rec = "REJECT — Below GP Floor"
+            rec = "REJECT â€” Below GP Floor"
             rec_color = "error"
             rec_detail = f"One or more PNs priced below minimum {min_gp_pct*100:.0f}% GP floor. Counter-offer at floor price."
         elif impact_flag and max_disc > 20:
-            rec = "ESCALATE — Significant Impact"
+            rec = "ESCALATE â€” Significant Impact"
             rec_color = "warning"
             rec_detail = f"Annual GP impact of EUR {abs(total_impact):,.0f} exceeds threshold of EUR {tml_threshold:,.0f} with >20% discount. VP + IML sign-off required."
         elif max_disc <= 15 and not weak_vol_flag:
@@ -376,7 +377,7 @@ with col_right:
             rec_color = "success"
             rec_detail = "Discount within standard range, volume justification acceptable, all PNs above floor."
         elif max_disc <= 25:
-            rec = "CONDITIONAL — Volume Commitment Required"
+            rec = "CONDITIONAL â€” Volume Commitment Required"
             rec_color = "warning"
             bev_max = df["Break-even Vol"].replace(float('inf'), 0).max()
             rec_detail = f"Approve on condition distributor commits to minimum {bev_max:.0f} units/year in writing. Review after 6 months."
@@ -386,7 +387,7 @@ with col_right:
             rec_detail = "Discount exceeds 25% or justification is weak. Requires VP approval before proceeding."
 
         if comp_flag:
-            rec_detail += " Note: requested price is above competitor reference — distributor's market pressure claim is weakened."
+            rec_detail += " Note: requested price is above competitor reference â€” distributor's market pressure claim is weakened."
 
         if rec_color == "success":
             st.success(f"**{rec}**\n\n{rec_detail}")
@@ -438,7 +439,7 @@ Requirements:
         st.markdown("""
 **Upload workflow:**
 1. Click 'Upload from Pricer File' to expand the uploader
-2. Upload the ISZE New Parts Pricer Excel — Part No., Description, BP(JPY) and Class auto-fill
+2. Upload the ISZE New Parts Pricer Excel â€” Part No., Description, BP(JPY) and Class auto-fill
 3. Add PR00 price, requested price, and volume per row
 4. Hit Calculate
 
