@@ -59,6 +59,138 @@ col_left, col_right = st.columns([1, 1.2], gap="large")
 
 with col_left:
     st.subheader("📥 SPA Request Details")
+
+    # ── Upload from Pricer File ──────────────────────────────────────────────
+    with st.expander("📂 Upload from Pricer File", expanded=False):
+        _template_csv = (
+            "Part No.,Part Name,B/P,Class,Source,PR00_EUR,Requested_EUR,Volume_yr\n"
+            "8982705240,Oil Filter,1500,C,,,,"
+        )
+        st.download_button(
+            "📥 Download template", _template_csv,
+            "spa_template.csv", "text/csv", key="dl_template"
+        )
+
+        _uploaded = st.file_uploader(
+            "Upload ISZE Pricer (.xlsx or .csv)",
+            type=["xlsx", "csv"], key="pricer_upload"
+        )
+
+        if _uploaded is not None:
+            try:
+                # ── Step 1: read raw (no header) to locate header row ─────
+                if _uploaded.name.endswith(".csv"):
+                    _raw = pd.read_csv(_uploaded, header=None, dtype=str, nrows=30)
+                else:
+                    _raw = pd.read_excel(
+                        _uploaded, header=None, dtype=str, nrows=30, engine="openpyxl"
+                    )
+
+                _header_row = None
+                for _ri, _rrow in _raw.iterrows():
+                    _rs = " ".join(
+                        str(v) for v in _rrow.values
+                        if pd.notna(v) and str(v) not in ("nan", "")
+                    )
+                    if any(kw in _rs for kw in ["Part No.", "B/P", "Part Name"]):
+                        _header_row = _ri
+                        break
+
+                if _header_row is None:
+                    st.error(
+                        "Could not detect header row. "
+                        "Ensure the file contains a row with 'Part No.' or 'B/P'."
+                    )
+                else:
+                    # ── Step 2: re-read with correct header ───────────────
+                    _uploaded.seek(0)
+                    if _uploaded.name.endswith(".csv"):
+                        _df = pd.read_csv(_uploaded, header=_header_row, dtype=str)
+                    else:
+                        _df = pd.read_excel(
+                            _uploaded, header=_header_row, dtype=str, engine="openpyxl"
+                        )
+                    _df.columns = [str(c).strip() for c in _df.columns]
+
+                    # ── Step 3: flexible column mapping ───────────────────
+                    def _find_col(df, candidates):
+                        for c in candidates:
+                            if c in df.columns:
+                                return c
+                        return None
+
+                    _col_pn   = _find_col(_df, [
+                        "Inquired Part No.", "Stock Part No. (Isuzu)",
+                        "Stock Part No.", "Part No.", "Newest Part No."
+                    ]) or _df.columns[0]
+                    _col_desc = _find_col(_df, ["Part Name", "Description", "Name"])
+                    _col_bp   = _find_col(_df, ["B/P (New PN)", "B/P", "BP", "Base Price"])
+                    _col_cls  = _find_col(_df, ["Class"])
+
+                    # filter rows that have a real part number
+                    _mask = (
+                        _df[_col_pn].notna()
+                        & ~_df[_col_pn].isin(["nan", "", "None", _col_pn])
+                    )
+                    _df_parts = _df[_mask].reset_index(drop=True)
+                    _n = len(_df_parts)
+
+                    # ── Step 4: preview ───────────────────────────────────
+                    _preview_cols = [
+                        c for c in [_col_pn, _col_desc, _col_bp, _col_cls]
+                        if c is not None
+                    ]
+                    st.markdown(
+                        f"**Detected {_n} parts** — header on row {_header_row + 1}"
+                    )
+                    st.dataframe(
+                        _df_parts[_preview_cols].head(10),
+                        use_container_width=True, hide_index=True
+                    )
+                    if _n > 10:
+                        st.caption(f"Showing first 10 of {_n} parts.")
+
+                    # ── Step 5: load button ───────────────────────────────
+                    if st.button(f"Load {_n} parts", key="load_parts_btn"):
+                        st.session_state.spa_rows = [{} for _ in range(_n)]
+                        for _i, (_, _r) in enumerate(_df_parts.iterrows()):
+                            # Part number
+                            _pn_v = str(_r[_col_pn]).strip()
+                            st.session_state[f"pn_{_i}"] = (
+                                "" if _pn_v in ("nan", "None") else _pn_v
+                            )
+                            # Description
+                            if _col_desc:
+                                _d_v = str(_r[_col_desc]).strip()
+                                st.session_state[f"desc_{_i}"] = (
+                                    "" if _d_v in ("nan", "None") else _d_v
+                                )
+                            # BP (JPY)
+                            if _col_bp:
+                                try:
+                                    st.session_state[f"bp_{_i}"] = float(
+                                        str(_r[_col_bp]).replace(",", "").strip()
+                                    )
+                                except (ValueError, TypeError):
+                                    st.session_state[f"bp_{_i}"] = 0.0
+                            # Class
+                            if _col_cls:
+                                _cls_v = str(_r[_col_cls]).strip() if pd.notna(_r[_col_cls]) else ""
+                                if _cls_v in CLASSES:
+                                    st.session_state[f"cls_{_i}"] = _cls_v
+                                elif _cls_v and _cls_v[-1] in CLASSES:
+                                    st.session_state[f"cls_{_i}"] = _cls_v[-1]
+
+                        st.session_state["upload_loaded"] = True
+                        st.success(
+                            f"Loaded {_n} parts. "
+                            "Fill in Source, PR00, Requested Price and Volume per row below."
+                        )
+
+            except Exception as _e:
+                st.error(f"Error reading file: {_e}")
+    # ── End upload block ─────────────────────────────────────────────────────
+
     distributor = st.text_input("Distributor", placeholder="e.g. ITUK, Universal Motors Israel")
     justification = st.text_area("Distributor Justification", placeholder="Reason for requesting special price", height=100)
 
