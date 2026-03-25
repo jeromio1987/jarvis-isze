@@ -59,10 +59,17 @@ def breakeven_volume(current_gp_eur, current_vol, new_gp_eur):
     return (current_gp_eur * current_vol) / new_gp_eur
 
 def detect_header_row(df_raw):
-    """Find the row index that looks like the real header."""
+    """Find the row index that looks like the real header — must have multi-word column names."""
     for i, row in df_raw.iterrows():
-        vals = [str(v).lower() for v in row.values]
-        if any("part" in v or "b/p" in v or "bp" in v or "class" in v for v in vals):
+        vals = [str(v).strip() for v in row.values if str(v).strip() not in ("nan", "", "None")]
+        if len(vals) < 3:
+            continue
+        # Require at least one value longer than 3 chars (not just single letters like C/D/F)
+        has_multichar = any(len(v) > 3 for v in vals)
+        # Require "part" or "b/p" somewhere in the row
+        row_text = " ".join(vals).lower()
+        has_part_col = "part" in row_text or "b/p" in row_text or "bp" in row_text
+        if has_multichar and has_part_col:
             return i
     return 0
 
@@ -111,6 +118,11 @@ def parse_pricer_file(uploaded_file):
     for _, row in df.iterrows():
         pn_val = str(row.get(col_map.get("pn", ""), "")).strip()
         if not pn_val or pn_val.lower() in ("nan", "", "none"):
+            continue
+        # Skip single-letter rows (class legend) and note/source rows
+        if len(pn_val) <= 2 and pn_val.isalpha():
+            continue
+        if pn_val.lower().startswith("note") or pn_val.lower().startswith("source"):
             continue
         bp_raw = str(row.get(col_map.get("bp", ""), "0")).strip()
         try:
